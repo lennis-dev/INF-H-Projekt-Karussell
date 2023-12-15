@@ -52,9 +52,13 @@ void isr_onOff_toggle() {
   setLedOnOff(_on);
 }
 
-void isr_rotate(){
-
-    _rotate = true;
+void isr_rotate() {
+  if (checkTimeBetweenInterrupts()){
+    if (_on)
+      _rotate = true;
+    else
+      _rotate = false;
+  }
 }
 
 void prepareInterupts() {
@@ -75,7 +79,7 @@ int main() {
   prepareInterupts();
   while (true) {
     for (char i = 0; i < 4; i++) {
-      if (_rotate) {
+      if (_rotate && _on) {
         motor = motorCW[i];
         thread_sleep_for(3);
       } else {
