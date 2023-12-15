@@ -16,12 +16,30 @@ unsigned int motorCW[] = {0x300, 0x600, 0xc00, 0x900};
 Timer measuredTimeBetweenInterrupts;
 
 // Interrupts
-InterruptIn onOff(PA_1);
+InterruptIn InterruptOnOff(PA_1);
+InterruptIn InterruptRotate(PA_6);
 
 bool volatile _on = false;
+bool volatile _rotate = false;
+
+// leds on
+void onLEDs(char mask) { leds = leds | mask; }
+
+// leds off
+void offLEDs(char mask) { leds = leds & ~mask; }
+
+void setLedOnOff(bool on) {
+  offLEDs(3);
+  if (on)
+    onLEDs(2);
+  else
+    onLEDs(1);
+}
+
+//
 
 bool checkTimeBetweenInterrupts() {
-  if (measuredTimeBetweenInterrupts.elapsed_time() > 10ms) {
+  if (measuredTimeBetweenInterrupts.elapsed_time() > 20ms) {
     measuredTimeBetweenInterrupts.reset();
     return true;
   } else
@@ -31,22 +49,33 @@ bool checkTimeBetweenInterrupts() {
 void isr_onOff_toggle() {
   if (checkTimeBetweenInterrupts())
     _on = !_on;
+  setLedOnOff(_on);
+}
+
+void isr_rotate(){
+
+    _rotate = true;
 }
 
 void prepareInterupts() {
   // On/Off toggle
-  onOff.mode(PullDown);
-  onOff.rise(&isr_onOff_toggle);
-  onOff.enable_irq();
+  InterruptOnOff.mode(PullDown);
+  InterruptOnOff.rise(&isr_onOff_toggle);
+
+  // Rotate
+
+  InterruptRotate.mode(PullDown);
+  InterruptRotate.rise(&isr_rotate);
 }
 
 // main() runs in its own thread in the OS
 int main() {
+  setLedOnOff(_on);
   measuredTimeBetweenInterrupts.start();
   prepareInterupts();
   while (true) {
     for (char i = 0; i < 4; i++) {
-      if (_on) {
+      if (_rotate) {
         motor = motorCW[i];
         thread_sleep_for(3);
       } else {
