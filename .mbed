@@ -1,5 +1,5 @@
 ROOT=.
-TARGET=NUCLEO_L152RE
-TARGET_CODE=0710
 DEVICE_ID[/home/studio/workspace/inf-h-projekt-karussell]=066DFF555651836687023535
 DEVICE_TYPE[/home/studio/workspace/inf-h-projekt-karussell]=connected
+TARGET=NUCLEO_L152RE
+TARGET_CODE=0710
