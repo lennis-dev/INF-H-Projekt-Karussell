@@ -4,17 +4,21 @@
 #include "LCD.h"
 
 // Chrono for Timers
+#include <algorithm>
 #include <chrono>
 #include <rt_sys.h>
 using namespace std::chrono;
 
+#define MOTOR_STOP 50
 #define MOTOR_SUPER_SLOW 45
 #define MOTOR_SLOW 40
 #define MOTO_MEDIUM 20
 #define MOTO_FAST 10
 #define MOTOR_SUPER_FAST 5
 
-#define TIME_SPEED_CHANGE 1s
+#define TIME_SPEED_CHANGE 100ms
+#define TIME_SPEED_WALK_LIGHT 500ms
+#define WALK_LIGHT_SIZE 6
 
 unsigned char const walkLight[] = {0b1, 0b10, 0b100, 0b1000, 0b10000, 0b100000};
 unsigned int const motorCW[] = {0x300, 0x600, 0xc00, 0x900};
@@ -27,6 +31,9 @@ InterruptIn InterruptEmergency(PA_10);
 lcd mylcd;
 Timer measuredTimeBetweenInterrupts;
 Ticker tickerSpeedControl;
+Ticker tickerWalkLight;
+
+Timeout timeouts[4];
 
 PortOut motor(PortC, 0xf00);
 PortOut leds(PortC, 0xff);
@@ -36,10 +43,11 @@ DigitalIn modeSelect[] = {PB_0, PB_1, PB_2};
 bool volatile _on = false;
 bool volatile _rotate = false;
 bool volatile _emergency = false;
+bool volatile _offAfterStop = false;
 
 char _mode = 0;
 char _speed = MOTOR_SUPER_FAST;
-char _newSpeed = 0;
+char _newSpeed;
 char _walkLightIndex = 0;
 
 void lcdClear() {
@@ -68,6 +76,18 @@ void setWalkLight(char mask) {
   offLEDs(~mask << 2);
 }
 
+void tickWalkLight() {
+  if (_rotate && _on) {
+    setWalkLight(walkLight[_walkLightIndex]);
+    if (_walkLightIndex == WALK_LIGHT_SIZE - 1)
+      _walkLightIndex = 0;
+    else
+      _walkLightIndex++;
+  } else {
+    setWalkLight(0);
+  }
+}
+
 //
 
 bool checkTimeBetweenInterrupts() {
@@ -76,14 +96,6 @@ bool checkTimeBetweenInterrupts() {
     return true;
   } else
     return false;
-}
-
-void isr_onOff_toggle() {
-  if (checkTimeBetweenInterrupts())
-    _on = !_on;
-  if (!_on)
-    _rotate = false;
-  setLedOnOff(_on);
 }
 
 void tickChangeSpeed() {
@@ -98,24 +110,49 @@ void tickChangeSpeed() {
 
 void changeSpeed(char newSpeed) { _newSpeed = newSpeed; }
 
+void slowStop() {
+  changeSpeed(MOTOR_STOP);
+}
+
+void modeToddler() {
+  _speed = MOTOR_SUPER_SLOW;
+  changeSpeed(MOTOR_SUPER_FAST);
+  timeouts[0].attach(&slowStop, 20s);
+}
+
+void modeKids() {}
+
+void modeAction() {}
+
+void isr_onOff_toggle() {
+  if (checkTimeBetweenInterrupts()) {
+    if (_on) {
+      slowStop();
+      _offAfterStop = true;
+      setLedOnOff(_on);
+    } else {
+      _on = true;
+      setLedOnOff(_on);
+    }
+  }
+}
+
 void startRotate() {
   if (_rotate)
     return;
   _rotate = true;
-  changeSpeed(MOTOR_SUPER_SLOW);
+  if (modeSelect[0])
+    modeToddler();
+  if (modeSelect[1])
+    modeKids();
+  if (modeSelect[2])
+    modeAction();
 }
 
 void isr_rotate() {
-  if (_on) {
-    if (modeSelect[0])
-      _mode = 0;
-    if (modeSelect[1])
-      _mode = 1;
-    if (modeSelect[2])
-      _mode = 2;
+  if (_on && _rotate == false) {
     startRotate();
-  } else
-    _rotate = false;
+  }
 }
 
 void isr_emergency() { _emergency = true; }
@@ -136,11 +173,14 @@ void prepareInterupts() {
 
 void emergency() {
   motor = 0;
-  mylcd.clear();
-  mylcd.printf("     NOTHALT    ");
+  tickerSpeedControl.detach();
+  tickerWalkLight.detach();
+  setWalkLight(0);
   InterruptEmergency.disable_irq();
   InterruptOnOff.disable_irq();
   InterruptRotate.disable_irq();
+  mylcd.clear();
+  mylcd.printf("     NOTHALT    ");
   while (true) {
     setLedOnOff(getLEDs(1));
     thread_sleep_for(200);
@@ -153,6 +193,7 @@ int main() {
   setLedOnOff(_on);
   measuredTimeBetweenInterrupts.start();
   tickerSpeedControl.attach(&tickChangeSpeed, TIME_SPEED_CHANGE);
+  tickerWalkLight.attach(&tickWalkLight, TIME_SPEED_WALK_LIGHT);
   prepareInterupts();
   while (true) {
     if (_emergency) {
@@ -161,6 +202,14 @@ int main() {
     for (char i = 0; i < 4; i++) {
       if (_emergency) {
         break;
+      }
+      if (_speed == MOTOR_STOP) {
+        _rotate = false;
+        if(_offAfterStop){
+            _offAfterStop = false;
+            _on = false;
+            setLedOnOff(false);
+        }
       }
       if (_rotate) {
         motor = motorCW[i];
