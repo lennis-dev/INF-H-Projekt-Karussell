@@ -12,8 +12,8 @@ using namespace std::chrono;
 #define MOTOR_STOP 50
 #define MOTOR_SUPER_SLOW 45
 #define MOTOR_SLOW 40
-#define MOTO_MEDIUM 20
-#define MOTO_FAST 10
+#define MOTOR_MEDIUM 20
+#define MOTOR_FAST 10
 #define MOTOR_SUPER_FAST 5
 
 #define TIME_SPEED_CHANGE 100ms
@@ -33,7 +33,7 @@ Timer measuredTimeBetweenInterrupts;
 Ticker tickerSpeedControl;
 Ticker tickerWalkLight;
 
-Timeout timeouts[4];
+Timeout timeouts[5];
 
 PortOut motor(PortC, 0xf00);
 PortOut leds(PortC, 0xff);
@@ -88,7 +88,7 @@ void tickWalkLight() {
   }
 }
 
-//
+// 
 
 bool checkTimeBetweenInterrupts() {
   if (measuredTimeBetweenInterrupts.elapsed_time() > 20ms) {
@@ -110,48 +110,81 @@ void tickChangeSpeed() {
 
 void changeSpeed(char newSpeed) { _newSpeed = newSpeed; }
 
-void slowStop() {
-  changeSpeed(MOTOR_STOP);
-}
+void slowStop() { changeSpeed(MOTOR_STOP); }
+
+void changeSpeedSlow() { changeSpeed(MOTOR_SLOW); }
+
+void changeSpeedMedium() { changeSpeed(MOTOR_MEDIUM); }
+
+void changeSpeedFast() { changeSpeed(MOTOR_FAST); }
 
 void modeToddler() {
   _speed = MOTOR_SUPER_SLOW;
-  changeSpeed(MOTOR_SUPER_FAST);
-  timeouts[0].attach(&slowStop, 20s);
+  changeSpeed(MOTOR_SLOW);
+  timeouts[0].attach(&slowStop, 3min);
+  mylcd.clear();
+  mylcd.printf("     Toddler    ");
 }
 
-void modeKids() {}
+void modeKids() {
+  _speed = MOTOR_SUPER_SLOW;
+  changeSpeed(MOTOR_SLOW);
+  timeouts[0].attach(&changeSpeedMedium, 30s);
+  timeouts[1].attach(&changeSpeedSlow, 150s);
+  timeouts[2].attach(&slowStop, 180s);
+  mylcd.clear();
+  mylcd.printf("      Kids      ");
+}
 
-void modeAction() {}
+void modeAction() {
+  _speed = MOTOR_SUPER_SLOW;
+  changeSpeed(MOTOR_SLOW);
+  timeouts[0].attach(&changeSpeedMedium, 10s);
+  timeouts[1].attach(&changeSpeedFast, 30s);
+  timeouts[2].attach(&changeSpeedMedium, 150s);
+  timeouts[3].attach(&changeSpeedSlow, 170s);
+  timeouts[4].attach(&slowStop, 3min);
+  mylcd.clear();
+  mylcd.printf("     Action     ");
+}
 
 void isr_onOff_toggle() {
+  InterruptOnOff.disable_irq();
   if (checkTimeBetweenInterrupts()) {
     if (_on) {
-      slowStop();
-      _offAfterStop = true;
-      setLedOnOff(_on);
+      timeouts[0].detach();
+      timeouts[1].detach();
+      timeouts[2].detach();
+      timeouts[3].detach();
+      timeouts[4].detach();
+      if (!_rotate) {
+        _on = false;
+        setLedOnOff(_on);
+        lcdClear();
+      } else {
+        slowStop();
+        _offAfterStop = true;
+      }
+
     } else {
       _on = true;
       setLedOnOff(_on);
     }
   }
-}
-
-void startRotate() {
-  if (_rotate)
-    return;
-  _rotate = true;
-  if (modeSelect[0])
-    modeToddler();
-  if (modeSelect[1])
-    modeKids();
-  if (modeSelect[2])
-    modeAction();
+  InterruptOnOff.enable_irq();
 }
 
 void isr_rotate() {
   if (_on && _rotate == false) {
-    startRotate();
+    _rotate = true;
+    if (modeSelect[0])
+      modeToddler();
+    else if (modeSelect[1])
+      modeKids();
+    else if (modeSelect[2])
+      modeAction();
+    else
+      _rotate = false;
   }
 }
 
@@ -189,12 +222,12 @@ void emergency() {
 
 // main() runs in its own thread in the OS
 int main() {
-  lcdClear();
   setLedOnOff(_on);
   measuredTimeBetweenInterrupts.start();
   tickerSpeedControl.attach(&tickChangeSpeed, TIME_SPEED_CHANGE);
   tickerWalkLight.attach(&tickWalkLight, TIME_SPEED_WALK_LIGHT);
   prepareInterupts();
+  lcdClear();
   while (true) {
     if (_emergency) {
       emergency();
@@ -205,11 +238,12 @@ int main() {
       }
       if (_speed == MOTOR_STOP) {
         _rotate = false;
-        if(_offAfterStop){
-            _offAfterStop = false;
-            _on = false;
-            setLedOnOff(false);
+        if (_offAfterStop) {
+          _offAfterStop = false;
+          _on = false;
+          setLedOnOff(false);
         }
+		lcdClear();
       }
       if (_rotate) {
         motor = motorCW[i];
