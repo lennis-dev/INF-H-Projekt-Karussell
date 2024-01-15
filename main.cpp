@@ -40,7 +40,8 @@ PortOut leds(PortC, 0xff);
 // Define digital inputs for mode selection
 DigitalIn modeSelect[] = {PB_0, PB_1, PB_2};
 
-// Define volatile variables for on/off state, rotation state, emergency state, and off after stop state
+// Define volatile variables for on/off state, rotation state, emergency state,
+// and off after stop state
 bool volatile _on = false;
 bool volatile _rotate = false;
 bool volatile _emergency = false;
@@ -53,8 +54,7 @@ char _newSpeed;
 char _walkLightIndex = 0;
 
 // Function to clear the LCD
-void lcdClear()
-{
+void lcdClear() {
   mylcd.clear();
   mylcd.printf("                ");
 }
@@ -69,8 +69,7 @@ void offLEDs(char mask) { leds = leds & ~mask; }
 char getLEDs(char mask = 0xff) { return leds & mask; }
 
 // Function to set the on/off LED
-void setLedOnOff(bool on)
-{
+void setLedOnOff(bool on) {
   offLEDs(3);
   if (on)
     onLEDs(2);
@@ -79,54 +78,40 @@ void setLedOnOff(bool on)
 }
 
 // Function to set the walk light
-void setWalkLight(char mask)
-{
+void setWalkLight(char mask) {
   onLEDs(mask << 2);
   offLEDs(~mask << 2);
 }
 
 // Function to update the walk light
-void tickWalkLight()
-{
-  if (_rotate && _on)
-  {
+void tickWalkLight() {
+  if (_rotate && _on) {
     setWalkLight(walkLight[_walkLightIndex]);
     if (_walkLightIndex == WALK_LIGHT_SIZE - 1)
       _walkLightIndex = 0;
     else
       _walkLightIndex++;
-  }
-  else
-  {
+  } else {
     setWalkLight(0);
   }
 }
 
 // Function to check the time between interrupts
-bool checkTimeBetweenInterrupts()
-{
-  if (measuredTimeBetweenInterrupts.elapsed_time() > 20ms)
-  {
+bool checkTimeBetweenInterrupts() {
+  if (measuredTimeBetweenInterrupts.elapsed_time() > 20ms) {
     measuredTimeBetweenInterrupts.reset();
     return true;
-  }
-  else
+  } else
     return false;
 }
 
 // Function to update the speed
-void tickChangeSpeed()
-{
-  if (_speed == _newSpeed)
-  {
+void tickChangeSpeed() {
+  if (_speed == _newSpeed) {
     return;
-  }
-  else if (_speed <= _newSpeed)
-  {
+  } else if (_speed <= _newSpeed) {
     _speed++;
-  }
-  else if (_speed >= _newSpeed)
-  {
+  } else if (_speed >= _newSpeed) {
     _speed--;
   }
 }
@@ -147,8 +132,7 @@ void changeSpeedMedium() { changeSpeed(MOTOR_MEDIUM); }
 void changeSpeedFast() { changeSpeed(MOTOR_FAST); }
 
 // Function to set toddler mode
-void modeToddler()
-{
+void modeToddler() {
   _speed = MOTOR_SUPER_SLOW;
   changeSpeed(MOTOR_SLOW);
   timeouts[0].attach(&slowStop, 3min);
@@ -157,8 +141,7 @@ void modeToddler()
 }
 
 // Function to set kids mode
-void modeKids()
-{
+void modeKids() {
   _speed = MOTOR_SUPER_SLOW;
   changeSpeed(MOTOR_SLOW);
   timeouts[0].attach(&changeSpeedMedium, 30s);
@@ -169,8 +152,7 @@ void modeKids()
 }
 
 // Function to set action mode
-void modeAction()
-{
+void modeAction() {
   _speed = MOTOR_SUPER_SLOW;
   changeSpeed(MOTOR_SLOW);
   timeouts[0].attach(&changeSpeedMedium, 10s);
@@ -183,32 +165,24 @@ void modeAction()
 }
 
 // Interrupt service routine for on/off toggle
-void isr_onOff_toggle()
-{
+void isr_onOff_toggle() {
   InterruptOnOff.disable_irq();
-  if (checkTimeBetweenInterrupts())
-  {
-    if (_on)
-    {
+  if (checkTimeBetweenInterrupts()) {
+    if (_on) {
       timeouts[0].detach();
       timeouts[1].detach();
       timeouts[2].detach();
       timeouts[3].detach();
       timeouts[4].detach();
-      if (!_rotate)
-      {
+      if (!_rotate) {
         _on = false;
         setLedOnOff(_on);
         lcdClear();
-      }
-      else
-      {
+      } else {
         slowStop();
         _offAfterStop = true;
       }
-    }
-    else
-    {
+    } else {
       _on = true;
       setLedOnOff(_on);
     }
@@ -217,10 +191,8 @@ void isr_onOff_toggle()
 }
 
 // Interrupt service routine for rotation
-void isr_rotate()
-{
-  if (_on && _rotate == false)
-  {
+void isr_rotate() {
+  if (_on && _rotate == false) {
     _rotate = true;
     if (modeSelect[0])
       modeToddler();
@@ -237,8 +209,7 @@ void isr_rotate()
 void isr_emergency() { _emergency = true; }
 
 // Function to prepare interrupts
-void prepareInterupts()
-{
+void prepareInterupts() {
   // On/Off toggle
   InterruptOnOff.mode(PullDown);
   InterruptOnOff.rise(&isr_onOff_toggle);
@@ -253,8 +224,7 @@ void prepareInterupts()
 }
 
 // Function to handle emergency stop
-void emergency()
-{
+void emergency() {
   motor = 0;
   tickerSpeedControl.detach();
   tickerWalkLight.detach();
@@ -264,54 +234,43 @@ void emergency()
   InterruptRotate.disable_irq();
   mylcd.clear();
   mylcd.printf("     NOTHALT    ");
-  while (true)
-  {
+  while (true) {
     setLedOnOff(getLEDs(1));
     thread_sleep_for(200);
   }
 }
 
 // main() runs in its own thread in the OS
-int main()
-{
+int main() {
   setLedOnOff(_on);
   measuredTimeBetweenInterrupts.start();
   tickerSpeedControl.attach(&tickChangeSpeed, TIME_SPEED_CHANGE);
   tickerWalkLight.attach(&tickWalkLight, TIME_SPEED_WALK_LIGHT);
   prepareInterupts();
   lcdClear();
-  while (true)
-  {
-    if (_emergency)
-    {
+  while (true) {
+    if (_emergency) {
       emergency();
     }
-    for (char i = 0; i < 4; i++)
-    {
-      if (_emergency)
-      {
+    for (char i = 0; i < 4; i++) {
+      if (_emergency) {
         break;
       }
-      if (_speed == MOTOR_STOP)
-      {
+      if (_speed == MOTOR_STOP) {
         _speed = MOTOR_STOP + 1;
         _newSpeed = MOTOR_STOP + 1;
         _rotate = false;
-        if (_offAfterStop)
-        {
+        if (_offAfterStop) {
           _offAfterStop = false;
           _on = false;
           setLedOnOff(false);
         }
         lcdClear();
       }
-      if (_rotate)
-      {
+      if (_rotate) {
         motor = motorCW[i];
         thread_sleep_for(_speed);
-      }
-      else
-      {
+      } else {
         motor = 0;
       }
     }
